@@ -1,0 +1,5 @@
+{
+  "name": "PayBank",
+  "description": "Simulated Digital Bank + Game Economy with Aadhaar onboarding, UPI system, and time-compressed economy.",
+  "requestFramePermissions": []
+}

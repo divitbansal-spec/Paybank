@@ -1,0 +1,294 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - email: string (required)
+    //   - balance: number (required)
+    //   - upiId: string (required)
+    //   - accountNumber: string (required)
+    //   - aadhaarId: string (required)
+    //   - upiCustom: bool (optional)
+    //   - upiSubscriptionEnd: number (optional)
+    //   - uiSubscriptionEnd: number (optional)
+    //   - depositCount: number (optional)
+    //   - depositResetTime: number (optional)
+    //   - lastBillingTime: number (optional)
+    //   - groupId: string (optional)
+    //   - isBanned: bool (optional)
+    //   - missedPayments: number (optional)
+    //   - fine: number (optional)
+    //   - pin: string (optional)
+    //   - createdAt: number (required)
+    //
+    // Collection: aadhaar
+    // Document ID: {aadhaarId}
+    // Fields:
+    //   - id: string (required)
+    //   - aadhaarNumber: string (required, unique)
+    //   - userId: string (required)
+    //   - createdAt: number (required)
+    //
+    // Collection: transactions
+    // Document ID: {transactionId}
+    // Fields:
+    //   - id: string (required)
+    //   - senderId: string (required)
+    //   - receiverId: string (required)
+    //   - amount: number (required)
+    //   - status: string (required, enum: success, failed, pending)
+    //   - timestamp: number (required)
+    //
+    // Collection: groups
+    // Document ID: {groupId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - ownerId: string (required)
+    //   - members: list (required)
+    //   - pendingInvites: list (optional)
+    //   - isPaused: bool (required)
+    //   - pausedBy: string (optional)
+    //   - resumedBy: list (optional)
+    //   - marketPrices: map (optional)
+    //   - createdAt: number (required)
+    //
+    // Collection: loans
+    // Document ID: {loanId}
+    // Fields:
+    //   - id: string (required)
+    //   - borrowerId: string (required)
+    //   - lenderId: string (required)
+    //   - principal: number (required)
+    //   - interestRate: number (required)
+    //   - duration: number (required)
+    //   - startTime: number (required)
+    //   - status: string (required, enum: active, paid, defaulted, banned)
+    //   - nextPaymentTime: number (optional)
+    //   - missedPayments: number (optional)
+    //   - fine: number (optional)
+    //   - lenderPinRequired: bool (optional)
+    //
+    // Collection: marketplace
+    // Document ID: {productId}
+    // Fields:
+    //   - id: string (required)
+    //   - sellerId: string (required)
+    //   - groupId: string (required)
+    //   - name: string (required)
+    //   - price: number (required)
+    //   - description: string (optional)
+    //   - image: string (optional)
+    //   - createdAt: number (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+         (('email' in request.auth.token) && request.auth.token.email == "divitbansal@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      let requiredFields = ['id', 'name', 'email', 'balance', 'upiId', 'accountNumber', 'aadhaarId', 'createdAt'];
+      
+      return data.keys().hasAll(requiredFields) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.balance is number && data.balance >= 0 &&
+             data.upiId is string &&
+             data.accountNumber is string &&
+             data.aadhaarId is string &&
+             data.createdAt is number &&
+             (!('holdings' in data) || data.holdings is map) &&
+             (!('premiumTheme' in data) || data.premiumTheme in ['midnight', 'emerald', 'ruby', 'gold', 'neon', 'sunset', 'ocean', 'cyber']) &&
+             (!('uiSubscriptionEnd' in data) || data.uiSubscriptionEnd is number) &&
+             (!('upiSubscriptionEnd' in data) || data.upiSubscriptionEnd is number) &&
+             (!('upiCustom' in data) || data.upiCustom is bool) &&
+             (!('groupId' in data) || data.groupId is string) &&
+             (!('isBanned' in data) || data.isBanned is bool) &&
+             (!('missedPayments' in data) || data.missedPayments is number) &&
+             (!('fine' in data) || data.fine is number) &&
+             (!('pin' in data) || (data.pin is string && data.pin.matches("^\\d{4}$"))) &&
+             (!('depositCount' in data) || data.depositCount is number) &&
+             (!('depositResetTime' in data) || data.depositResetTime is number) &&
+             (!('withdrawCount' in data) || data.withdrawCount is number) &&
+             (!('withdrawResetTime' in data) || data.withdrawResetTime is number) &&
+             (!('lastBillingTime' in data) || data.lastBillingTime is number) &&
+             (!('role' in data) || data.role in ['admin', 'user']);
+    }
+
+    function isValidAadhaar(data) {
+      return data.keys().hasAll(['id', 'aadhaarNumber', 'userId', 'createdAt']) &&
+             data.aadhaarNumber is string && data.aadhaarNumber.matches("^\\d{12}$") &&
+             data.userId is string &&
+             data.createdAt is number;
+    }
+
+    function isValidTransaction(data) {
+      let allowedFields = ['id', 'senderId', 'receiverId', 'amount', 'status', 'timestamp', 'type', 'assetId', 'assetName', 'assetPrice', 'note', 'loanId'];
+      return data.keys().hasAll(['id', 'senderId', 'receiverId', 'amount', 'status', 'timestamp']) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.senderId is string &&
+             data.receiverId is string &&
+             data.amount is number && data.amount >= 0 &&
+             data.status in ['success', 'failed', 'pending'] &&
+             data.timestamp is number &&
+             (!('type' in data) || data.type is string) &&
+             (!('assetId' in data) || data.assetId is string) &&
+             (!('assetName' in data) || data.assetName is string) &&
+             (!('assetPrice' in data) || data.assetPrice is number) &&
+             (!('note' in data) || data.note is string) &&
+             (!('loanId' in data) || data.loanId is string);
+    }
+
+    function isJoiningGroup() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             exists(/databases/$(database)/documents/aadhaar/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.aadhaarId)) &&
+             request.resource.data.members.hasAll(resource.data.members) &&
+             request.resource.data.members.size() == resource.data.members.size() + 1 &&
+             request.auth.uid in request.resource.data.members &&
+             get(/databases/$(database)/documents/aadhaar/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.aadhaarId)).data.aadhaarNumber in resource.data.get('pendingInvites', []) &&
+             !(get(/databases/$(database)/documents/aadhaar/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.aadhaarId)).data.aadhaarNumber in request.resource.data.get('pendingInvites', []));
+    }
+
+    function isValidGroup(data) {
+      return data.keys().hasAll(['id', 'name', 'ownerId', 'members', 'isPaused', 'createdAt']) &&
+             data.id is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.ownerId is string &&
+             data.members is list &&
+             data.isPaused is bool &&
+             data.createdAt is number &&
+             (!('pendingInvites' in data) || data.pendingInvites is list) &&
+             (!('pausedBy' in data) || data.pausedBy is string || data.pausedBy == null) &&
+             (!('resumedBy' in data) || data.resumedBy is list) &&
+             (!('marketPrices' in data) || data.marketPrices is map);
+    }
+
+    function isValidLoan(data) {
+      return data.keys().hasAll(['id', 'borrowerId', 'lenderId', 'principal', 'interestRate', 'duration', 'startTime', 'status']) &&
+             data.id is string &&
+             data.borrowerId is string &&
+             data.lenderId is string &&
+             data.principal is number &&
+             data.interestRate is number &&
+             data.duration is number &&
+             data.startTime is number &&
+             data.status in ['active', 'paid', 'defaulted', 'banned'] &&
+             (!('nextPaymentTime' in data) || data.nextPaymentTime is number) &&
+             (!('missedPayments' in data) || data.missedPayments is number) &&
+             (!('fine' in data) || data.fine is number) &&
+             (!('lenderPinRequired' in data) || data.lenderPinRequired is bool);
+    }
+
+    function isValidMarketProduct(data) {
+      let allowedFields = ['id', 'sellerId', 'groupId', 'name', 'price', 'createdAt', 'description', 'image'];
+      return data.keys().hasAll(['id', 'sellerId', 'groupId', 'name', 'price', 'createdAt']) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.id is string &&
+             data.sellerId is string &&
+             data.groupId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.price is number && data.price >= 0 &&
+             data.createdAt is number &&
+             (!('description' in data) || data.description is string) &&
+             (!('image' in data) || data.image is string);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+        (request.resource.data.role == 'user' || request.resource.data.email == 'divitbansal@gmail.com' || isAdmin());
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (isOwner(userId) && isValidUser(request.resource.data) && 
+         (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) ||
+        (request.resource.data.balance > resource.data.balance && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance'])) ||
+        (request.resource.data.balance < resource.data.balance && 
+         request.resource.data.pin == resource.data.pin &&
+         request.resource.data.diff(resource.data).affectedKeys().hasAny(['balance', 'pin']))
+      ) && isValidUser(request.resource.data);
+    }
+
+    match /aadhaar/{aadhaarId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAadhaar(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidAadhaar(request.resource.data) && 
+        request.resource.data.aadhaarNumber == resource.data.aadhaarNumber &&
+        request.resource.data.createdAt == resource.data.createdAt &&
+        (resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.senderId || 
+        request.auth.uid == resource.data.receiverId || 
+        isAdmin() ||
+        (resource.data.get('loanId', null) != null && (
+          request.auth.uid == get(/databases/$(database)/documents/loans/$(resource.data.loanId)).data.borrowerId ||
+          request.auth.uid == get(/databases/$(database)/documents/loans/$(resource.data.loanId)).data.lenderId
+        ))
+      );
+      allow create: if isAuthenticated() && isValidTransaction(request.resource.data) && (
+        request.auth.uid == request.resource.data.senderId || 
+        request.auth.uid == request.resource.data.receiverId ||
+        isAdmin()
+      );
+      allow update: if isAdmin();
+    }
+
+    match /groups/{groupId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidGroup(request.resource.data) && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.ownerId == request.auth.uid || 
+        request.auth.uid in resource.data.members ||
+        isAdmin() ||
+        isJoiningGroup()
+      ) && isValidGroup(request.resource.data);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.ownerId == request.auth.uid);
+    }
+
+    match /loans/{loanId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.borrowerId || request.auth.uid == resource.data.lenderId || isAdmin());
+      allow create: if isAuthenticated() && isValidLoan(request.resource.data) && (request.auth.uid == request.resource.data.borrowerId || isAdmin());
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.borrowerId || request.auth.uid == resource.data.lenderId || isAdmin()) && isValidLoan(request.resource.data);
+    }
+
+    match /marketplace/{productId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMarketProduct(request.resource.data) && request.resource.data.sellerId == request.auth.uid;
+      allow update: if isAuthenticated() && (resource.data.sellerId == request.auth.uid || isAdmin()) && isValidMarketProduct(request.resource.data);
+      allow delete: if isAuthenticated() && (
+        resource.data.sellerId == request.auth.uid || 
+        isAdmin() ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.groupId == resource.data.groupId
+      );
+    }
+  }
+}

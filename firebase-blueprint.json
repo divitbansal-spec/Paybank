@@ -1,0 +1,139 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A PayBank user account.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "balance": { "type": "number" },
+        "upiId": { "type": "string" },
+        "accountNumber": { "type": "string" },
+        "aadhaarId": { "type": "string" },
+        "upiCustom": { "type": "boolean" },
+        "upiSubscriptionEnd": { "type": "number" },
+        "uiSubscriptionEnd": { "type": "number" },
+        "depositCount": { "type": "number" },
+        "depositResetTime": { "type": "number" },
+        "withdrawCount": { "type": "number" },
+        "withdrawResetTime": { "type": "number" },
+        "lastBillingTime": { "type": "number" },
+        "groupId": { "type": "string" },
+        "isBanned": { "type": "boolean" },
+        "missedPayments": { "type": "number" },
+        "fine": { "type": "number" },
+        "pin": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "email", "balance", "upiId", "accountNumber", "aadhaarId", "createdAt"]
+    },
+    "Aadhaar": {
+      "title": "Aadhaar",
+      "description": "Aadhaar identity record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "aadhaarNumber": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "aadhaarNumber", "userId", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "A money transfer record.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["success", "failed", "pending"] },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "senderId", "receiverId", "amount", "status", "timestamp"]
+    },
+    "Group": {
+      "title": "Group",
+      "description": "A group of friends sharing market prices and game state.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "members": { "type": "array", "items": { "type": "string" } },
+        "pendingInvites": { "type": "array", "items": { "type": "string" } },
+        "isPaused": { "type": "boolean" },
+        "pausedBy": { "type": "string" },
+        "resumedBy": { "type": "array", "items": { "type": "string" } },
+        "marketPrices": { "type": "object" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "ownerId", "members", "isPaused", "createdAt"]
+    },
+    "Loan": {
+      "title": "Loan",
+      "description": "A loan from the bank or a friend.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "borrowerId": { "type": "string" },
+        "lenderId": { "type": "string" },
+        "principal": { "type": "number" },
+        "interestRate": { "type": "number" },
+        "duration": { "type": "number" },
+        "startTime": { "type": "number" },
+        "nextPaymentTime": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "paid", "defaulted", "banned"] },
+        "missedPayments": { "type": "number" },
+        "fine": { "type": "number" },
+        "lenderPinRequired": { "type": "boolean" }
+      },
+      "required": ["id", "borrowerId", "lenderId", "principal", "interestRate", "duration", "startTime", "status"]
+    },
+    "MarketProduct": {
+      "title": "MarketProduct",
+      "description": "A product listed in the group marketplace.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "groupId": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "description": { "type": "string" },
+        "image": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "sellerId", "groupId", "name", "price", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile and account data."
+    },
+    "/aadhaar/{aadhaarId}": {
+      "schema": "Aadhaar",
+      "description": "Aadhaar records for identity verification."
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "History of all money transfers."
+    },
+    "/groups/{groupId}": {
+      "schema": "Group",
+      "description": "Friend groups."
+    },
+    "/loans/{loanId}": {
+      "schema": "Loan",
+      "description": "Active and past loans."
+    },
+    "/marketplace/{productId}": {
+      "schema": "MarketProduct",
+      "description": "Group marketplace products."
+    }
+  }
+}
